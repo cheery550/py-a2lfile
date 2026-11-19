@@ -1,7 +1,12 @@
-//! Emit the same parser-neutral JSON shape that `/tmp/a2l-diff/dump_raw.py`
-//! produces from pya2ldb's ORM, so one normalization pass can consume both.
+//! `a2l-raw <input.a2l> <output.json>`: write the first MODULE as parser-neutral
+//! JSON for Python-side normalization. Input must be UTF-8 (see `utf8_check`);
+//! failures exit non-zero with a `path:line:` message on stderr.
 #![allow(non_snake_case)]
 
+#[path = "a2l_raw/utf8_check.rs"]
+mod utf8_check;
+
+use std::path::Path;
 use std::time::Instant;
 
 use a2lfile_core::{
@@ -1021,6 +1026,10 @@ fn main() {
     let output = args.get(2).expect("usage: a2l-raw <file.a2l> <out.json>");
 
     let t0 = Instant::now();
+    if let Err(message) = utf8_check::check_tree(Path::new(path)) {
+        eprintln!("load failed: {message}");
+        std::process::exit(1);
+    }
     let (file, errors) = match a2lfile_core::load(path, None, false) {
         Ok(x) => x,
         Err(e) => {
