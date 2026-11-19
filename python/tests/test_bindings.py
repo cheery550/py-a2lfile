@@ -353,3 +353,127 @@ def test_measurement_dependencies_are_resolved_cleanly() -> None:
     assert isinstance(module.get_compu_method("temp_linear"), a2lfile.CompuMethod)
     assert isinstance(module.get_unit("temp_unit"), a2lfile.Unit)
     assert isinstance(module.get_compu_tab("temp_numeric"), a2lfile.CompuTab)
+
+
+TEST_A2L_CALIBRATION = """
+ASAP2_VERSION 1 71
+/begin PROJECT PROJECT_CAL ""
+  /begin MODULE MODULE_CAL ""
+    /begin MOD_COMMON ""
+      BYTE_ORDER MSB_LAST
+      ALIGNMENT_BYTE 1
+    /end MOD_COMMON
+    /begin MOD_PAR ""
+      EPK "EPK_TAG"
+      ADDR_EPK 0x1234
+      /begin MEMORY_SEGMENT seg_cal "标定区" DATA FLASH INTERN 0x80000000 0x1000 -1 -1 -1 -1 -1
+      /end MEMORY_SEGMENT
+    /end MOD_PAR
+    /begin RECORD_LAYOUT Lookup1D
+      FNC_VALUES 1 FLOAT32_IEEE ROW_DIR DIRECT
+      AXIS_PTS_X 5 FLOAT32_IEEE INDEX_INCR DIRECT
+      NO_AXIS_PTS_X 3 UBYTE
+      ALIGNMENT_BYTE 1
+    /end RECORD_LAYOUT
+    /begin AXIS_PTS axis_x "轴点" 0x2000 NO_INPUT_QUANTITY Axis_FLOAT32 0 cm_ident 7 -5 5
+      BYTE_ORDER MSB_LAST
+    /end AXIS_PTS
+    /begin CHARACTERISTIC curve_p "跟车 P 控制" CURVE 0x1000 Lookup1D 0 cm_ident -1000 1000
+      /begin AXIS_DESCR COM_AXIS NO_INPUT_QUANTITY cm_ident 7 -5 5
+        AXIS_PTS_REF axis_x
+      /end AXIS_DESCR
+    /end CHARACTERISTIC
+    /begin CHARACTERISTIC gain_val "反馈曲率" VALUE 0x1100 Scalar_F32 0 cm_ident 0 100
+      MATRIX_DIM 2 3
+      STEP_SIZE 0.5
+      FORMAT "%5.2"
+      CALIBRATION_ACCESS CALIBRATION
+    /end CHARACTERISTIC
+  /end MODULE
+/end PROJECT
+""".strip()
+
+
+def test_characteristic_fields_are_exposed() -> None:
+    module = a2lfile.load_from_string(TEST_A2L_CALIBRATION).modules[0]
+    curve = module.get_characteristic("curve_p")
+    assert isinstance(curve, a2lfile.Characteristic)
+    assert curve.name == "curve_p"
+    assert curve.long_identifier == "跟车 P 控制"
+    assert curve.characteristic_type is a2lfile.CharacteristicType.Curve
+    assert curve.address == 0x1000
+    assert curve.deposit == "Lookup1D"
+    assert curve.conversion == "cm_ident"
+    assert curve.lower_limit == -1000.0
+    assert curve.upper_limit == 1000.0
+    assert curve.read_only is False
+    assert curve.matrix_dim == []
+
+    gain = module.get_characteristic("gain_val")
+    assert gain.characteristic_type is a2lfile.CharacteristicType.Value
+    assert gain.matrix_dim == [2, 3]
+    assert gain.step_size == 0.5
+    assert gain.format == "%5.2"
+    assert gain.calibration_access is a2lfile.CalibrationAccess.Calibration
+    assert gain.long_identifier == "反馈曲率"
+
+
+def test_axis_descriptor_is_exposed() -> None:
+    module = a2lfile.load_from_string(TEST_A2L_CALIBRATION).modules[0]
+    axes = module.get_characteristic("curve_p").axis_descr
+    assert len(axes) == 1
+    axis = axes[0]
+    assert axis.attribute is a2lfile.AxisDescrAttribute.ComAxis
+    assert axis.input_quantity == "NO_INPUT_QUANTITY"
+    assert axis.max_axis_points == 7
+    assert axis.axis_pts_ref == "axis_x"
+    assert axis.lower_limit == -5.0
+    assert axis.upper_limit == 5.0
+    assert axis.deposit is None
+    assert axis.fix_axis_par is None
+
+
+def test_axis_pts_is_exposed() -> None:
+    module = a2lfile.load_from_string(TEST_A2L_CALIBRATION).modules[0]
+    assert len(module.axis_pts_list) == 1
+    axis = module.get_axis_pts("axis_x")
+    assert isinstance(axis, a2lfile.AxisPts)
+    assert axis.address == 0x2000
+    assert axis.deposit_record == "Axis_FLOAT32"
+    assert axis.max_axis_points == 7
+    assert axis.byte_order is a2lfile.ByteOrderEnum.MsbLast
+    assert axis.long_identifier == "轴点"
+
+
+def test_record_layout_components_are_exposed() -> None:
+    module = a2lfile.load_from_string(TEST_A2L_CALIBRATION).modules[0]
+    assert len(module.record_layouts) == 1
+    layout = module.get_record_layout("Lookup1D")
+    assert isinstance(layout, a2lfile.RecordLayout)
+    assert layout.fnc_values.position == 1
+    assert layout.fnc_values.datatype is a2lfile.DataType.Float32Ieee
+    assert layout.fnc_values.index_mode is a2lfile.IndexMode.RowDir
+    assert layout.fnc_values.address_type is a2lfile.AddrType.Direct
+    assert layout.axis_pts_x.position == 5
+    assert layout.axis_pts_x.index_incr is a2lfile.IndexOrder.IndexIncr
+    assert layout.no_axis_pts_x.position == 3
+    assert layout.no_axis_pts_x.datatype is a2lfile.DataType.Ubyte
+    assert layout.alignment_byte == 1
+    assert layout.static_address_offsets is False
+    assert layout.static_record_layout is False
+
+
+def test_memory_segments_are_exposed() -> None:
+    module = a2lfile.load_from_string(TEST_A2L_CALIBRATION).modules[0]
+    segments = module.memory_segments
+    assert len(segments) == 1
+    segment = segments[0]
+    assert isinstance(segment, a2lfile.MemorySegment)
+    assert segment.name == "seg_cal"
+    assert segment.long_identifier == "标定区"
+    assert segment.prg_type is a2lfile.PrgType.Data
+    assert segment.memory_type is a2lfile.MemoryType.Flash
+    assert segment.attribute is a2lfile.MemoryAttribute.Intern
+    assert segment.address == 0x80000000
+    assert segment.size == 0x1000
+    assert segment.offset == [-1, -1, -1, -1, -1]

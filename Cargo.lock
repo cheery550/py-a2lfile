@@ -428,6 +428,8 @@ dependencies = [
  "a2lfile",
  "pyo3",
  "pyo3-stub-gen",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

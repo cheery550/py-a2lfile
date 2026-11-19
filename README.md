@@ -9,12 +9,17 @@
 
 - Parse A2L content from a file path with `a2lfile.load(...)`
 - Parse A2L content directly from a string with `a2lfile.load_from_string(...)`
-- Inspect modules and measurements through a small, read-only Python API
+- Inspect modules, measurements, characteristics, axis points, record layouts, and memory segments through a read-only Python API
+- Access `CHARACTERISTIC` / `AXIS_DESCR` / `AXIS_PTS` calibration metadata, including matrix dimensions, deposit references, fixed axis parameters, and `AXIS_PTS_REF`
+- Access `RECORD_LAYOUT` components (`FNC_VALUES`, `AXIS_PTS_X/Y`, `NO_AXIS_PTS_X/Y`, `FIX_NO_AXIS_PTS_X/Y`) and alignment borders
+- Access `MOD_PAR` `MEMORY_SEGMENT` addresses, sizes, program/memory types, and offsets
 - Access conversion metadata including `COMPU_METHOD`, `COMPU_TAB`, `COMPU_VTAB`, and `COMPU_VTAB_RANGE`
 - Resolve references from measurements to conversion tables and engineering units
 - Inspect module-level metadata such as `MOD_COMMON`, `MOD_PAR`, and unit definitions
 - Traverse generic `IF_DATA`, including tagged structures used for XCP-oriented extraction
 - Access detailed measurement metadata such as annotations, bit operations, addresses, refresh information, symbol links, and virtual channels
+- Decode A2L text as UTF-8 (including `longIdentifier` and `PHYS_UNIT`), ignoring a leading BOM
+- Export the parsed module as parser-neutral JSON with the bundled `a2l-raw` binary
 - Stable and fast parsing backed by the Rust `a2lfile` library
 - Typed distribution with `_a2lfile.pyi` and `py.typed`
 - Supports CPython 3.12, 3.13, and 3.14 using stable ABI (`abi3`) wheels
@@ -48,7 +53,25 @@ for module in a2l.modules:
     print(module.name)
     for measurement in module.measurements:
         print(" ", measurement.name, measurement.conversion)
+    for characteristic in module.characteristics:
+        print(" ", characteristic.name, characteristic.characteristic_type,
+              hex(characteristic.address), characteristic.axis_descr)
 ```
+
+## JSON export (`a2l-raw`)
+
+The crate also ships a small binary that writes the parsed module as JSON:
+
+```bash
+cargo build --release --bin a2l-raw
+./target/release/a2l-raw example.a2l example.json
+```
+
+The output is a parser-neutral view (modules, measurements, characteristics,
+axis points, record layouts, memory segments, groups, functions) intended for
+services that normalize A2L data without linking against the Python extension.
+Field names mirror the upstream `a2lfile` structure; enums use A2L spelling
+(`FLOAT32_IEEE`, `MSB_LAST`, `ROW_DIR`, `DIRECT`).
 
 ## Development
 

@@ -16,13 +16,19 @@ use pyo3_stub_gen::{StubGenConfig, StubInfo};
 
 use a2lfile_core::{
     A2lFile as RustA2lFile, A2lObjectName, AddrType as RustAddrType, Annotation as RustAnnotation,
-    BitOperation as RustBitOperation, ByteOrderEnum as RustByteOrderEnum, Coeffs as RustCoeffs,
+    AxisDescr as RustAxisDescr, AxisDescrAttribute as RustAxisDescrAttribute,
+    AxisPts as RustAxisPts, BitOperation as RustBitOperation, ByteOrderEnum as RustByteOrderEnum,
+    CalibrationAccessEnum as RustCalibrationAccess, Characteristic as RustCharacteristic,
+    CharacteristicType as RustCharacteristicType, Coeffs as RustCoeffs,
     CoeffsLinear as RustCoeffsLinear, CompuMethod as RustCompuMethod, CompuTab as RustCompuTab,
     CompuVtab as RustCompuVtab, CompuVtabRange as RustCompuVtabRange,
-    ConversionType as RustConversionType, DataType as RustDataType, Formula as RustFormula,
-    GenericIfData as RustGenericIfData, GenericIfDataTaggedItem as RustGenericIfDataTaggedItem,
-    IfData as RustIfData, IndexMode as RustIndexMode, MaxRefresh as RustMaxRefresh,
-    Measurement as RustMeasurement, Module as RustModule, SiExponents as RustSiExponents,
+    ConversionType as RustConversionType, DataType as RustDataType, DepositMode as RustDepositMode,
+    Formula as RustFormula, GenericIfData as RustGenericIfData,
+    GenericIfDataTaggedItem as RustGenericIfDataTaggedItem, IfData as RustIfData,
+    IndexMode as RustIndexMode, IndexOrder as RustIndexOrder, MaxRefresh as RustMaxRefresh,
+    Measurement as RustMeasurement, MemoryAttribute as RustMemoryAttribute,
+    MemorySegment as RustMemorySegment, MemoryType as RustMemoryType, Module as RustModule,
+    PrgType as RustPrgType, RecordLayout as RustRecordLayout, SiExponents as RustSiExponents,
     SymbolLink as RustSymbolLink, TabEntryStruct as RustTabEntry, Unit as RustUnit,
     UnitConversion as RustUnitConversion, UnitType as RustUnitType,
     ValuePairsStruct as RustValuePair, ValueTriplesStruct as RustValueTriple,
@@ -464,6 +470,71 @@ impl Module {
     fn get_compu_tab(&self, py: Python<'_>, name: &str) -> PyResult<Option<Py<PyAny>>> {
         let context = self.context();
         wrap_compu_table_by_name(py, &context, name)
+    }
+
+    #[getter]
+    fn characteristics(&self) -> Vec<Characteristic> {
+        self.inner()
+            .characteristic
+            .iter()
+            .cloned()
+            .map(Characteristic::new)
+            .collect()
+    }
+
+    #[getter]
+    fn axis_pts_list(&self) -> Vec<AxisPts> {
+        self.inner()
+            .axis_pts
+            .iter()
+            .cloned()
+            .map(AxisPts::new)
+            .collect()
+    }
+
+    #[getter]
+    fn record_layouts(&self) -> Vec<RecordLayout> {
+        self.inner()
+            .record_layout
+            .iter()
+            .cloned()
+            .map(RecordLayout::new)
+            .collect()
+    }
+
+    #[getter]
+    fn memory_segments(&self) -> Vec<MemorySegment> {
+        self.inner()
+            .mod_par
+            .as_ref()
+            .map(|par| {
+                par.memory_segment
+                    .iter()
+                    .cloned()
+                    .map(MemorySegment::new)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn get_characteristic(&self, name: &str) -> Option<Characteristic> {
+        self.inner()
+            .characteristic
+            .get(name)
+            .cloned()
+            .map(Characteristic::new)
+    }
+
+    fn get_axis_pts(&self, name: &str) -> Option<AxisPts> {
+        self.inner().axis_pts.get(name).cloned().map(AxisPts::new)
+    }
+
+    fn get_record_layout(&self, name: &str) -> Option<RecordLayout> {
+        self.inner()
+            .record_layout
+            .get(name)
+            .cloned()
+            .map(RecordLayout::new)
     }
 
     #[gen_stub(skip)]
@@ -1755,6 +1826,25 @@ fn _a2lfile(m: &Bound<'_, PythonModule>) -> PyResult<()> {
     m.add_class::<GenericIfData>()?;
     m.add_class::<GenericIfDataTaggedItem>()?;
     m.add_class::<IfData>()?;
+    m.add_class::<CharacteristicType>()?;
+    m.add_class::<AxisDescrAttribute>()?;
+    m.add_class::<DepositMode>()?;
+    m.add_class::<CalibrationAccess>()?;
+    m.add_class::<PrgType>()?;
+    m.add_class::<MemoryType>()?;
+    m.add_class::<MemoryAttribute>()?;
+    m.add_class::<IndexOrder>()?;
+    m.add_class::<FixAxisPar>()?;
+    m.add_class::<FixAxisParDist>()?;
+    m.add_class::<AxisDescr>()?;
+    m.add_class::<Characteristic>()?;
+    m.add_class::<AxisPts>()?;
+    m.add_class::<FncValues>()?;
+    m.add_class::<AxisPtsDim>()?;
+    m.add_class::<NoAxisPtsDim>()?;
+    m.add_class::<FixNoAxisPtsDim>()?;
+    m.add_class::<RecordLayout>()?;
+    m.add_class::<MemorySegment>()?;
     m.add_class::<IndexMode>()?;
     m.add_class::<MaxRefresh>()?;
     m.add_class::<Measurement>()?;
@@ -1768,6 +1858,1010 @@ fn _a2lfile(m: &Bound<'_, PythonModule>) -> PyResult<()> {
     m.add_class::<ValuePair>()?;
     m.add_class::<ValueTriple>()?;
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Calibration objects: CHARACTERISTIC / AXIS_DESCR / AXIS_PTS / RECORD_LAYOUT /
+// MEMORY_SEGMENT. Read-only views over the parsed module, mirroring the field
+// names used by the existing Measurement bindings.
+// ---------------------------------------------------------------------------
+
+#[gen_stub_pyclass_enum]
+#[pyclass(eq, frozen, hash, skip_from_py_object)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum CharacteristicType {
+    Value,
+    Curve,
+    Map,
+    Cuboid,
+    Cube4,
+    Cube5,
+    ValBlk,
+    Ascii,
+}
+
+impl From<&RustCharacteristicType> for CharacteristicType {
+    fn from(value: &RustCharacteristicType) -> Self {
+        match value {
+            RustCharacteristicType::Value => Self::Value,
+            RustCharacteristicType::Curve => Self::Curve,
+            RustCharacteristicType::Map => Self::Map,
+            RustCharacteristicType::Cuboid => Self::Cuboid,
+            RustCharacteristicType::Cube4 => Self::Cube4,
+            RustCharacteristicType::Cube5 => Self::Cube5,
+            RustCharacteristicType::ValBlk => Self::ValBlk,
+            RustCharacteristicType::Ascii => Self::Ascii,
+        }
+    }
+}
+
+#[gen_stub_pyclass_enum]
+#[pyclass(eq, frozen, hash, skip_from_py_object)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum AxisDescrAttribute {
+    CurveAxis,
+    ComAxis,
+    FixAxis,
+    ResAxis,
+    StdAxis,
+}
+
+impl From<&RustAxisDescrAttribute> for AxisDescrAttribute {
+    fn from(value: &RustAxisDescrAttribute) -> Self {
+        match value {
+            RustAxisDescrAttribute::CurveAxis => Self::CurveAxis,
+            RustAxisDescrAttribute::ComAxis => Self::ComAxis,
+            RustAxisDescrAttribute::FixAxis => Self::FixAxis,
+            RustAxisDescrAttribute::ResAxis => Self::ResAxis,
+            RustAxisDescrAttribute::StdAxis => Self::StdAxis,
+        }
+    }
+}
+
+#[gen_stub_pyclass_enum]
+#[pyclass(eq, frozen, hash, skip_from_py_object)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum DepositMode {
+    Absolute,
+    Difference,
+}
+
+impl From<&RustDepositMode> for DepositMode {
+    fn from(value: &RustDepositMode) -> Self {
+        match value {
+            RustDepositMode::Absolute => Self::Absolute,
+            RustDepositMode::Difference => Self::Difference,
+        }
+    }
+}
+
+#[gen_stub_pyclass_enum]
+#[pyclass(eq, frozen, hash, skip_from_py_object)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum CalibrationAccess {
+    Calibration,
+    NoCalibration,
+    NotInMcdSystem,
+    OfflineCalibration,
+}
+
+impl From<&RustCalibrationAccess> for CalibrationAccess {
+    fn from(value: &RustCalibrationAccess) -> Self {
+        match value {
+            RustCalibrationAccess::Calibration => Self::Calibration,
+            RustCalibrationAccess::NoCalibration => Self::NoCalibration,
+            RustCalibrationAccess::NotInMcdSystem => Self::NotInMcdSystem,
+            RustCalibrationAccess::OfflineCalibration => Self::OfflineCalibration,
+        }
+    }
+}
+
+#[gen_stub_pyclass_enum]
+#[pyclass(eq, frozen, hash, skip_from_py_object)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum PrgType {
+    CalibrationVariables,
+    Code,
+    Data,
+    ExcludeFromFlash,
+    OfflineData,
+    Reserved,
+    Seram,
+    Variables,
+}
+
+impl From<&RustPrgType> for PrgType {
+    fn from(value: &RustPrgType) -> Self {
+        match value {
+            RustPrgType::CalibrationVariables => Self::CalibrationVariables,
+            RustPrgType::Code => Self::Code,
+            RustPrgType::Data => Self::Data,
+            RustPrgType::ExcludeFromFlash => Self::ExcludeFromFlash,
+            RustPrgType::OfflineData => Self::OfflineData,
+            RustPrgType::Reserved => Self::Reserved,
+            RustPrgType::Seram => Self::Seram,
+            RustPrgType::Variables => Self::Variables,
+        }
+    }
+}
+
+#[gen_stub_pyclass_enum]
+#[pyclass(eq, frozen, hash, skip_from_py_object)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum MemoryType {
+    Eeprom,
+    Eprom,
+    Flash,
+    Ram,
+    Rom,
+    Register,
+    NotInEcu,
+}
+
+impl From<&RustMemoryType> for MemoryType {
+    fn from(value: &RustMemoryType) -> Self {
+        match value {
+            RustMemoryType::Eeprom => Self::Eeprom,
+            RustMemoryType::Eprom => Self::Eprom,
+            RustMemoryType::Flash => Self::Flash,
+            RustMemoryType::Ram => Self::Ram,
+            RustMemoryType::Rom => Self::Rom,
+            RustMemoryType::Register => Self::Register,
+            RustMemoryType::NotInEcu => Self::NotInEcu,
+        }
+    }
+}
+
+#[gen_stub_pyclass_enum]
+#[pyclass(eq, frozen, hash, skip_from_py_object)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum MemoryAttribute {
+    Intern,
+    Extern,
+}
+
+impl From<&RustMemoryAttribute> for MemoryAttribute {
+    fn from(value: &RustMemoryAttribute) -> Self {
+        match value {
+            RustMemoryAttribute::Intern => Self::Intern,
+            RustMemoryAttribute::Extern => Self::Extern,
+        }
+    }
+}
+
+#[gen_stub_pyclass_enum]
+#[pyclass(eq, frozen, hash, skip_from_py_object)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum IndexOrder {
+    IndexIncr,
+    IndexDecr,
+}
+
+impl From<&RustIndexOrder> for IndexOrder {
+    fn from(value: &RustIndexOrder) -> Self {
+        match value {
+            RustIndexOrder::IndexIncr => Self::IndexIncr,
+            RustIndexOrder::IndexDecr => Self::IndexDecr,
+        }
+    }
+}
+
+#[gen_stub_pyclass]
+#[pyclass(frozen, skip_from_py_object)]
+#[derive(Clone)]
+struct FixAxisPar {
+    offset: f64,
+    shift: f64,
+    number_apo: u16,
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl FixAxisPar {
+    #[getter]
+    fn offset(&self) -> f64 {
+        self.offset
+    }
+
+    #[getter]
+    fn shift(&self) -> f64 {
+        self.shift
+    }
+
+    #[getter]
+    fn number_apo(&self) -> u16 {
+        self.number_apo
+    }
+}
+
+#[gen_stub_pyclass]
+#[pyclass(frozen, skip_from_py_object)]
+#[derive(Clone)]
+struct FixAxisParDist {
+    offset: f64,
+    distance: f64,
+    number_apo: u16,
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl FixAxisParDist {
+    #[getter]
+    fn offset(&self) -> f64 {
+        self.offset
+    }
+
+    #[getter]
+    fn distance(&self) -> f64 {
+        self.distance
+    }
+
+    #[getter]
+    fn number_apo(&self) -> u16 {
+        self.number_apo
+    }
+}
+
+#[gen_stub_pyclass]
+#[pyclass(frozen, skip_from_py_object)]
+#[derive(Clone)]
+struct AxisDescr {
+    inner: RustAxisDescr,
+}
+
+impl AxisDescr {
+    fn new(inner: RustAxisDescr) -> Self {
+        Self { inner }
+    }
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl AxisDescr {
+    #[getter]
+    fn attribute(&self) -> AxisDescrAttribute {
+        AxisDescrAttribute::from(&self.inner.attribute)
+    }
+
+    #[getter]
+    fn input_quantity(&self) -> String {
+        self.inner.input_quantity.clone()
+    }
+
+    #[getter]
+    fn conversion(&self) -> String {
+        self.inner.conversion.clone()
+    }
+
+    #[getter]
+    fn max_axis_points(&self) -> u16 {
+        self.inner.max_axis_points
+    }
+
+    #[getter]
+    fn lower_limit(&self) -> f64 {
+        self.inner.lower_limit
+    }
+
+    #[getter]
+    fn upper_limit(&self) -> f64 {
+        self.inner.upper_limit
+    }
+
+    #[getter]
+    fn axis_pts_ref(&self) -> Option<String> {
+        self.inner
+            .axis_pts_ref
+            .as_ref()
+            .map(|value| value.axis_points.clone())
+    }
+
+    #[getter]
+    fn byte_order(&self) -> Option<ByteOrderEnum> {
+        self.inner
+            .byte_order
+            .as_ref()
+            .map(|value| ByteOrderEnum::from(&value.byte_order))
+    }
+
+    #[getter]
+    fn deposit(&self) -> Option<DepositMode> {
+        self.inner
+            .deposit
+            .as_ref()
+            .map(|value| DepositMode::from(&value.mode))
+    }
+
+    #[getter]
+    fn fix_axis_par(&self) -> Option<FixAxisPar> {
+        self.inner.fix_axis_par.as_ref().map(|value| FixAxisPar {
+            offset: value.offset,
+            shift: value.shift,
+            number_apo: value.number_apo,
+        })
+    }
+
+    #[getter]
+    fn fix_axis_par_dist(&self) -> Option<FixAxisParDist> {
+        self.inner
+            .fix_axis_par_dist
+            .as_ref()
+            .map(|value| FixAxisParDist {
+                offset: value.offset,
+                distance: value.distance,
+                number_apo: value.number_apo,
+            })
+    }
+
+    #[getter]
+    fn fix_axis_par_list(&self) -> Vec<f64> {
+        self.inner
+            .fix_axis_par_list
+            .as_ref()
+            .map(|value| value.axis_pts_value_list.clone())
+            .unwrap_or_default()
+    }
+
+    #[getter]
+    fn format(&self) -> Option<String> {
+        self.inner
+            .format
+            .as_ref()
+            .map(|value| value.format_string.clone())
+    }
+
+    #[getter]
+    fn read_only(&self) -> bool {
+        self.inner.read_only.is_some()
+    }
+
+    #[getter]
+    fn step_size(&self) -> Option<f64> {
+        self.inner.step_size.as_ref().map(|value| value.step_size)
+    }
+}
+
+#[gen_stub_pyclass]
+#[pyclass(frozen, skip_from_py_object)]
+#[derive(Clone)]
+struct Characteristic {
+    inner: RustCharacteristic,
+}
+
+impl Characteristic {
+    fn new(inner: RustCharacteristic) -> Self {
+        Self { inner }
+    }
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl Characteristic {
+    #[getter]
+    fn name(&self) -> String {
+        self.inner.get_name().to_string()
+    }
+
+    #[getter]
+    fn long_identifier(&self) -> String {
+        self.inner.long_identifier.clone()
+    }
+
+    #[getter]
+    fn characteristic_type(&self) -> CharacteristicType {
+        CharacteristicType::from(&self.inner.characteristic_type)
+    }
+
+    #[getter]
+    fn address(&self) -> u32 {
+        self.inner.address
+    }
+
+    #[getter]
+    fn deposit(&self) -> String {
+        self.inner.deposit.clone()
+    }
+
+    #[getter]
+    fn max_diff(&self) -> f64 {
+        self.inner.max_diff
+    }
+
+    #[getter]
+    fn conversion(&self) -> String {
+        self.inner.conversion.clone()
+    }
+
+    #[getter]
+    fn lower_limit(&self) -> f64 {
+        self.inner.lower_limit
+    }
+
+    #[getter]
+    fn upper_limit(&self) -> f64 {
+        self.inner.upper_limit
+    }
+
+    #[getter]
+    fn axis_descr(&self) -> Vec<AxisDescr> {
+        self.inner
+            .axis_descr
+            .iter()
+            .cloned()
+            .map(AxisDescr::new)
+            .collect()
+    }
+
+    #[getter]
+    fn bit_mask(&self) -> Option<u64> {
+        self.inner.bit_mask.as_ref().map(|value| value.mask)
+    }
+
+    #[getter]
+    fn byte_order(&self) -> Option<ByteOrderEnum> {
+        self.inner
+            .byte_order
+            .as_ref()
+            .map(|value| ByteOrderEnum::from(&value.byte_order))
+    }
+
+    #[getter]
+    fn calibration_access(&self) -> Option<CalibrationAccess> {
+        self.inner
+            .calibration_access
+            .as_ref()
+            .map(|value| CalibrationAccess::from(&value.calibration_access))
+    }
+
+    #[getter]
+    fn discrete(&self) -> bool {
+        self.inner.discrete.is_some()
+    }
+
+    #[getter]
+    fn display_identifier(&self) -> Option<String> {
+        self.inner
+            .display_identifier
+            .as_ref()
+            .map(|value| value.display_name.clone())
+    }
+
+    #[getter]
+    fn ecu_address_extension(&self) -> Option<i16> {
+        self.inner
+            .ecu_address_extension
+            .as_ref()
+            .map(|value| value.extension)
+    }
+
+    #[getter]
+    fn format(&self) -> Option<String> {
+        self.inner
+            .format
+            .as_ref()
+            .map(|value| value.format_string.clone())
+    }
+
+    #[getter]
+    fn function_list(&self) -> Vec<String> {
+        self.inner
+            .function_list
+            .as_ref()
+            .map(|value| value.name_list.clone())
+            .unwrap_or_default()
+    }
+
+    #[getter]
+    fn matrix_dim(&self) -> Vec<u16> {
+        self.inner
+            .matrix_dim
+            .as_ref()
+            .map(|value| value.dim_list.clone())
+            .unwrap_or_default()
+    }
+
+    #[getter]
+    fn number(&self) -> Option<u16> {
+        self.inner.number.as_ref().map(|value| value.number)
+    }
+
+    #[getter]
+    fn phys_unit(&self) -> Option<String> {
+        self.inner
+            .phys_unit
+            .as_ref()
+            .map(|value| value.unit.clone())
+    }
+
+    #[getter]
+    fn read_only(&self) -> bool {
+        self.inner.read_only.is_some()
+    }
+
+    #[getter]
+    fn ref_memory_segment(&self) -> Option<String> {
+        self.inner
+            .ref_memory_segment
+            .as_ref()
+            .map(|value| value.name.clone())
+    }
+
+    #[getter]
+    fn step_size(&self) -> Option<f64> {
+        self.inner.step_size.as_ref().map(|value| value.step_size)
+    }
+
+    #[getter]
+    fn virtual_characteristic(&self) -> bool {
+        self.inner.virtual_characteristic.is_some()
+    }
+
+    #[getter]
+    fn dependent_characteristic(&self) -> bool {
+        self.inner.dependent_characteristic.is_some()
+    }
+
+    #[getter]
+    fn if_data(&self) -> Vec<IfData> {
+        self.inner
+            .if_data
+            .iter()
+            .cloned()
+            .map(IfData::from)
+            .collect()
+    }
+}
+
+#[gen_stub_pyclass]
+#[pyclass(frozen, skip_from_py_object)]
+#[derive(Clone)]
+struct AxisPts {
+    inner: RustAxisPts,
+}
+
+impl AxisPts {
+    fn new(inner: RustAxisPts) -> Self {
+        Self { inner }
+    }
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl AxisPts {
+    #[getter]
+    fn name(&self) -> String {
+        self.inner.get_name().to_string()
+    }
+
+    #[getter]
+    fn long_identifier(&self) -> String {
+        self.inner.long_identifier.clone()
+    }
+
+    #[getter]
+    fn address(&self) -> u32 {
+        self.inner.address
+    }
+
+    #[getter]
+    fn input_quantity(&self) -> String {
+        self.inner.input_quantity.clone()
+    }
+
+    #[getter]
+    fn deposit_record(&self) -> String {
+        self.inner.deposit_record.clone()
+    }
+
+    #[getter]
+    fn deposit(&self) -> Option<DepositMode> {
+        self.inner
+            .deposit
+            .as_ref()
+            .map(|value| DepositMode::from(&value.mode))
+    }
+
+    #[getter]
+    fn max_diff(&self) -> f64 {
+        self.inner.max_diff
+    }
+
+    #[getter]
+    fn conversion(&self) -> String {
+        self.inner.conversion.clone()
+    }
+
+    #[getter]
+    fn max_axis_points(&self) -> u16 {
+        self.inner.max_axis_points
+    }
+
+    #[getter]
+    fn lower_limit(&self) -> f64 {
+        self.inner.lower_limit
+    }
+
+    #[getter]
+    fn upper_limit(&self) -> f64 {
+        self.inner.upper_limit
+    }
+
+    #[getter]
+    fn byte_order(&self) -> Option<ByteOrderEnum> {
+        self.inner
+            .byte_order
+            .as_ref()
+            .map(|value| ByteOrderEnum::from(&value.byte_order))
+    }
+
+    #[getter]
+    fn ecu_address_extension(&self) -> Option<i16> {
+        self.inner
+            .ecu_address_extension
+            .as_ref()
+            .map(|value| value.extension)
+    }
+
+    #[getter]
+    fn read_only(&self) -> bool {
+        self.inner.read_only.is_some()
+    }
+
+    #[getter]
+    fn ref_memory_segment(&self) -> Option<String> {
+        self.inner
+            .ref_memory_segment
+            .as_ref()
+            .map(|value| value.name.clone())
+    }
+
+    #[getter]
+    fn function_list(&self) -> Vec<String> {
+        self.inner
+            .function_list
+            .as_ref()
+            .map(|value| value.name_list.clone())
+            .unwrap_or_default()
+    }
+
+    #[getter]
+    fn step_size(&self) -> Option<f64> {
+        self.inner.step_size.as_ref().map(|value| value.step_size)
+    }
+
+    #[getter]
+    fn format(&self) -> Option<String> {
+        self.inner
+            .format
+            .as_ref()
+            .map(|value| value.format_string.clone())
+    }
+
+    #[getter]
+    fn if_data(&self) -> Vec<IfData> {
+        self.inner
+            .if_data
+            .iter()
+            .cloned()
+            .map(IfData::from)
+            .collect()
+    }
+}
+
+#[gen_stub_pyclass]
+#[pyclass(frozen, skip_from_py_object)]
+#[derive(Clone)]
+struct FncValues {
+    position: u16,
+    datatype: DataType,
+    index_mode: IndexMode,
+    address_type: AddrType,
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl FncValues {
+    #[getter]
+    fn position(&self) -> u16 {
+        self.position
+    }
+
+    #[getter]
+    fn datatype(&self) -> DataType {
+        self.datatype
+    }
+
+    #[getter]
+    fn index_mode(&self) -> IndexMode {
+        self.index_mode
+    }
+
+    #[getter]
+    fn address_type(&self) -> AddrType {
+        self.address_type
+    }
+}
+
+#[gen_stub_pyclass]
+#[pyclass(frozen, skip_from_py_object)]
+#[derive(Clone)]
+struct AxisPtsDim {
+    position: u16,
+    datatype: DataType,
+    index_incr: IndexOrder,
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl AxisPtsDim {
+    #[getter]
+    fn position(&self) -> u16 {
+        self.position
+    }
+
+    #[getter]
+    fn datatype(&self) -> DataType {
+        self.datatype
+    }
+
+    #[getter]
+    fn index_incr(&self) -> IndexOrder {
+        self.index_incr
+    }
+}
+
+#[gen_stub_pyclass]
+#[pyclass(frozen, skip_from_py_object)]
+#[derive(Clone)]
+struct NoAxisPtsDim {
+    position: u16,
+    datatype: DataType,
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl NoAxisPtsDim {
+    #[getter]
+    fn position(&self) -> u16 {
+        self.position
+    }
+
+    #[getter]
+    fn datatype(&self) -> DataType {
+        self.datatype
+    }
+}
+
+#[gen_stub_pyclass]
+#[pyclass(frozen, skip_from_py_object)]
+#[derive(Clone)]
+struct FixNoAxisPtsDim {
+    number_of_axis_points: u16,
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl FixNoAxisPtsDim {
+    #[getter]
+    fn number_of_axis_points(&self) -> u16 {
+        self.number_of_axis_points
+    }
+}
+
+fn axis_dim(value: &a2lfile_core::AxisPtsDim) -> AxisPtsDim {
+    AxisPtsDim {
+        position: value.position,
+        datatype: DataType::from(&value.datatype),
+        index_incr: IndexOrder::from(&value.index_incr),
+    }
+}
+
+fn no_axis_dim(value: &a2lfile_core::NoAxisPtsDim) -> NoAxisPtsDim {
+    NoAxisPtsDim {
+        position: value.position,
+        datatype: DataType::from(&value.datatype),
+    }
+}
+
+fn fix_no_axis_dim(value: &a2lfile_core::FixNoAxisPtsDim) -> FixNoAxisPtsDim {
+    FixNoAxisPtsDim {
+        number_of_axis_points: value.number_of_axis_points,
+    }
+}
+
+#[gen_stub_pyclass]
+#[pyclass(frozen, skip_from_py_object)]
+#[derive(Clone)]
+struct RecordLayout {
+    inner: RustRecordLayout,
+}
+
+impl RecordLayout {
+    fn new(inner: RustRecordLayout) -> Self {
+        Self { inner }
+    }
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl RecordLayout {
+    #[getter]
+    fn name(&self) -> String {
+        self.inner.get_name().to_string()
+    }
+
+    #[getter]
+    fn fnc_values(&self) -> Option<FncValues> {
+        self.inner.fnc_values.as_ref().map(|value| FncValues {
+            position: value.position,
+            datatype: DataType::from(&value.datatype),
+            index_mode: IndexMode::from(&value.index_mode),
+            address_type: AddrType::from(&value.address_type),
+        })
+    }
+
+    #[getter]
+    fn axis_pts_x(&self) -> Option<AxisPtsDim> {
+        self.inner.axis_pts_x.as_ref().map(axis_dim)
+    }
+
+    #[getter]
+    fn axis_pts_y(&self) -> Option<AxisPtsDim> {
+        self.inner.axis_pts_y.as_ref().map(axis_dim)
+    }
+
+    #[getter]
+    fn no_axis_pts_x(&self) -> Option<NoAxisPtsDim> {
+        self.inner.no_axis_pts_x.as_ref().map(no_axis_dim)
+    }
+
+    #[getter]
+    fn no_axis_pts_y(&self) -> Option<NoAxisPtsDim> {
+        self.inner.no_axis_pts_y.as_ref().map(no_axis_dim)
+    }
+
+    #[getter]
+    fn fix_no_axis_pts_x(&self) -> Option<FixNoAxisPtsDim> {
+        self.inner.fix_no_axis_pts_x.as_ref().map(fix_no_axis_dim)
+    }
+
+    #[getter]
+    fn fix_no_axis_pts_y(&self) -> Option<FixNoAxisPtsDim> {
+        self.inner.fix_no_axis_pts_y.as_ref().map(fix_no_axis_dim)
+    }
+
+    #[getter]
+    fn static_address_offsets(&self) -> bool {
+        self.inner.static_address_offsets.is_some()
+    }
+
+    #[getter]
+    fn static_record_layout(&self) -> bool {
+        self.inner.static_record_layout.is_some()
+    }
+
+    #[getter]
+    fn alignment_byte(&self) -> Option<u16> {
+        self.inner
+            .alignment_byte
+            .as_ref()
+            .map(|value| value.alignment_border)
+    }
+
+    #[getter]
+    fn alignment_word(&self) -> Option<u16> {
+        self.inner
+            .alignment_word
+            .as_ref()
+            .map(|value| value.alignment_border)
+    }
+
+    #[getter]
+    fn alignment_long(&self) -> Option<u16> {
+        self.inner
+            .alignment_long
+            .as_ref()
+            .map(|value| value.alignment_border)
+    }
+
+    #[getter]
+    fn alignment_int64(&self) -> Option<u16> {
+        self.inner
+            .alignment_int64
+            .as_ref()
+            .map(|value| value.alignment_border)
+    }
+
+    #[getter]
+    fn alignment_float16_ieee(&self) -> Option<u16> {
+        self.inner
+            .alignment_float16_ieee
+            .as_ref()
+            .map(|value| value.alignment_border)
+    }
+
+    #[getter]
+    fn alignment_float32_ieee(&self) -> Option<u16> {
+        self.inner
+            .alignment_float32_ieee
+            .as_ref()
+            .map(|value| value.alignment_border)
+    }
+
+    #[getter]
+    fn alignment_float64_ieee(&self) -> Option<u16> {
+        self.inner
+            .alignment_float64_ieee
+            .as_ref()
+            .map(|value| value.alignment_border)
+    }
+}
+
+#[gen_stub_pyclass]
+#[pyclass(frozen, skip_from_py_object)]
+#[derive(Clone)]
+struct MemorySegment {
+    inner: RustMemorySegment,
+}
+
+impl MemorySegment {
+    fn new(inner: RustMemorySegment) -> Self {
+        Self { inner }
+    }
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl MemorySegment {
+    #[getter]
+    fn name(&self) -> String {
+        self.inner.get_name().to_string()
+    }
+
+    #[getter]
+    fn long_identifier(&self) -> String {
+        self.inner.long_identifier.clone()
+    }
+
+    #[getter]
+    fn prg_type(&self) -> PrgType {
+        PrgType::from(&self.inner.prg_type)
+    }
+
+    #[getter]
+    fn memory_type(&self) -> MemoryType {
+        MemoryType::from(&self.inner.memory_type)
+    }
+
+    #[getter]
+    fn attribute(&self) -> MemoryAttribute {
+        MemoryAttribute::from(&self.inner.attribute)
+    }
+
+    #[getter]
+    fn address(&self) -> u32 {
+        self.inner.address
+    }
+
+    #[getter]
+    fn size(&self) -> u32 {
+        self.inner.size
+    }
+
+    #[getter]
+    fn offset(&self) -> Vec<i32> {
+        self.inner.offset.to_vec()
+    }
+
+    #[getter]
+    fn if_data(&self) -> Vec<IfData> {
+        self.inner
+            .if_data
+            .iter()
+            .cloned()
+            .map(IfData::from)
+            .collect()
+    }
 }
 
 /// Build stub metadata for the native module's module-stub layout.

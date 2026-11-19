@@ -19,7 +19,13 @@ a2lfile_core = { package = "a2lfile", version = "=3.5.0", default-features = fal
 # Build against the stable CPython ABI available from Python 3.12 onward.
 pyo3 = { version = "0.29.3", features = ["extension-module", "abi3-py312"] }
 pyo3-stub-gen = { version = "0.23.0", default-features = false, features = ["infer_signature"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [[bin]]
 name = "stub_gen"
 path = "src/bin/stub_gen.rs"
+
+[[bin]]
+name = "a2l-raw"
+path = "src/bin/a2l_raw.rs"
